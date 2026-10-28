@@ -1,0 +1,292 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-tag:
+    name: Validate the release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a v-prefixed semantic version tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          pattern='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'
+          if [[ ! "$RELEASE_TAG" =~ $pattern ]]; then
+            echo "::error::Release tag '$RELEASE_TAG' does not match $pattern"
+            exit 1
+          fi
+          echo "Release tag $RELEASE_TAG is valid."
+
+  engineering:
+    name: Engineering checks
+    needs: validate-tag
+    uses: ./.github/workflows/engineering.yml
+
+  build:
+    name: Build the distributions
+    needs: engineering
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository with its full history and tags
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.22"
+          checksum: "741ff1f5742c5a4a25d2f829e8395355e43f7a5ae2ebc6368e9ae2df0efb69cf"
+          python-version: "3.12"
+      - name: Build the source distribution and wheel
+        run: uv build --no-sources
+      - name: Verify the built version matches the release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          uv sync --locked --group dev
+          uv run --no-sync python - <<'PY'
+          import os
+          import pathlib
+          import sys
+
+          from packaging.version import InvalidVersion, Version
+
+          tag = os.environ["RELEASE_TAG"]
+          try:
+              expected = Version(tag[1:])
+          except InvalidVersion:
+              sys.exit(f"release tag {tag} is not a valid PEP 440 version")
+
+          artifacts = sorted(
+              path for path in pathlib.Path("dist").iterdir() if not path.name.startswith(".")
+          )
+          if not artifacts:
+              sys.exit("the build produced no distribution artifacts")
+
+          versions = set()
+          for artifact in artifacts:
+              name = artifact.name
+              for suffix in (".tar.gz", ".whl"):
+                  if name.endswith(suffix):
+                      stem = name[: -len(suffix)]
+                      break
+              else:
+                  sys.exit(f"unexpected artifact {name}")
+              parts = stem.split("-")
+              if len(parts) < 2 or parts[0] != "code_harness":
+                  sys.exit(f"unexpected artifact name {name}")
+              try:
+                  versions.add(Version(parts[1]))
+              except InvalidVersion:
+                  sys.exit(f"artifact {name} carries an invalid version")
+
+          if versions != {expected}:
+              reported = sorted(str(version) for version in versions)
+              sys.exit(f"artifact versions {reported} do not match tag version {expected}")
+          print(f"artifact version {expected} matches release tag {tag}")
+          PY
+      - name: Install the wheel into a runtime-only environment and start the CLI
+        run: |
+          uv sync --locked --no-dev
+          uv pip install --no-deps dist/*.whl
+          uv run --no-sync code-harness --help
+      - name: Upload the distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the built distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - name: Publish the release and verify its final state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          repo="$GITHUB_REPOSITORY"
+          tag="$RELEASE_TAG"
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf "$work_dir"' EXIT
+
+          fail() {
+            printf '::error::%s\n' "$*" >&2
+            exit 1
+          }
+
+          wheels=()
+          sdists=()
+          for artifact in dist/*; do
+            if [[ ! -f "$artifact" ]]; then
+              continue
+            fi
+            case "$artifact" in
+              *.whl) wheels+=("$artifact") ;;
+              *.tar.gz) sdists+=("$artifact") ;;
+              *) fail "unexpected file in the downloaded distributions: $artifact" ;;
+            esac
+          done
+          if [[ ${#wheels[@]} -ne 1 ]]; then
+            fail "expected exactly one wheel in dist/, found ${#wheels[@]}"
+          fi
+          if [[ ${#sdists[@]} -ne 1 ]]; then
+            fail "expected exactly one source distribution in dist/, found ${#sdists[@]}"
+          fi
+
+          expected_names=("$(basename "${wheels[0]}")" "$(basename "${sdists[0]}")")
+          expected_sorted="$(printf '%s\n' "${expected_names[@]}" | sort)"
+
+          matched_path=""
+          path_for_asset() {
+            case "$1" in
+              *.whl) matched_path="${wheels[0]}" ;;
+              *.tar.gz) matched_path="${sdists[0]}" ;;
+              *) fail "unexpected asset name $1" ;;
+            esac
+          }
+
+          asset_state=""
+          lookup_asset_state() {
+            asset_state=""
+            while IFS=$'\t' read -r name state; do
+              if [[ -n "$name" && "$name" == "$1" ]]; then
+                asset_state="$state"
+                return 0
+              fi
+            done <<< "$asset_lines"
+          }
+
+          release_json=""
+          view_error="$work_dir/view-error.log"
+          release_exists=false
+          if release_json="$(gh release view "$tag" --repo "$repo" --json isDraft,assets 2> "$view_error")"; then
+            release_exists=true
+          elif grep -qiE 'not found|HTTP 404' "$view_error" 2>/dev/null; then
+            release_exists=false
+          else
+            cat "$view_error" >&2
+            fail "could not look up the release for tag $tag"
+          fi
+
+          is_draft=false
+          asset_lines=""
+          pending_uploads=()
+          if [[ "$release_exists" == true ]]; then
+            is_draft="$(jq -r '.isDraft' <<< "$release_json")"
+            asset_lines="$(jq -r '.assets[] | [.name, .state] | @tsv' <<< "$release_json")"
+            while IFS=$'\t' read -r name state; do
+              if [[ -z "$name" ]]; then
+                continue
+              fi
+              known=false
+              for expected in "${expected_names[@]}"; do
+                if [[ "$name" == "$expected" ]]; then
+                  known=true
+                  break
+                fi
+              done
+              if [[ "$known" != true ]]; then
+                fail "the release for tag $tag already carries the asset $name, which this build does not produce; leaving the release unchanged"
+              fi
+            done <<< "$asset_lines"
+
+            for expected in "${expected_names[@]}"; do
+              lookup_asset_state "$expected"
+              path_for_asset "$expected"
+              if [[ -z "$asset_state" ]]; then
+                pending_uploads+=("$matched_path")
+                continue
+              fi
+              if [[ "$asset_state" != "uploaded" ]]; then
+                fail "the existing asset $expected of the release for tag $tag is in state $asset_state; resolve it before publishing again"
+              fi
+              reuse_dir="$work_dir/reuse-$expected"
+              mkdir -p "$reuse_dir"
+              gh release download "$tag" --repo "$repo" --pattern "$expected" --dir "$reuse_dir" \
+                || fail "could not download the existing asset $expected of the release for tag $tag"
+              cmp -s "$reuse_dir/$expected" "$matched_path" \
+                || fail "the existing asset $expected of the release for tag $tag differs from the built artifact; leaving it unchanged"
+              echo "Reusing the existing asset $expected of the release for tag $tag."
+            done
+          else
+            pending_uploads=("${wheels[0]}" "${sdists[0]}")
+            gh release create "$tag" "${pending_uploads[@]}" \
+              --repo "$repo" \
+              --verify-tag \
+              --title "$tag" \
+              --generate-notes \
+              || fail "could not create the release for tag $tag"
+            pending_uploads=()
+          fi
+
+          if [[ ${#pending_uploads[@]} -gt 0 ]]; then
+            gh release upload "$tag" "${pending_uploads[@]}" --repo "$repo" \
+              || fail "could not upload ${pending_uploads[*]} to the release for tag $tag; the assets already on the release were left unchanged"
+          fi
+
+          if [[ "$is_draft" == true ]]; then
+            gh release edit "$tag" --repo "$repo" --draft=false \
+              || fail "could not publish the draft release for tag $tag"
+          fi
+
+          final_json="$(gh release view "$tag" --repo "$repo" --json isDraft,assets)" \
+            || fail "could not read the release for tag $tag after publishing"
+          if [[ "$(jq -r '.isDraft' <<< "$final_json")" != "false" ]]; then
+            fail "the release for tag $tag is still a draft after publishing"
+          fi
+
+          final_names=()
+          while IFS=$'\t' read -r name state; do
+            if [[ -z "$name" ]]; then
+              continue
+            fi
+            if [[ "$state" != "uploaded" ]]; then
+              fail "the asset $name of the release for tag $tag is in state $state"
+            fi
+            final_names+=("$name")
+          done <<< "$(jq -r '.assets[] | [.name, .state] | @tsv' <<< "$final_json")"
+
+          if [[ ${#final_names[@]} -eq 0 ]]; then
+            fail "the release for tag $tag has no assets"
+          fi
+          final_sorted="$(printf '%s\n' "${final_names[@]}" | sort)"
+          if [[ "$final_sorted" != "$expected_sorted" ]]; then
+            printf 'assets on the release for tag %s:\n%s\n' "$tag" "$final_sorted" >&2
+            printf 'assets built for tag %s:\n%s\n' "$tag" "$expected_sorted" >&2
+            fail "the assets on the release for tag $tag do not match the built distributions"
+          fi
+
+          for expected in "${expected_names[@]}"; do
+            path_for_asset "$expected"
+            verify_dir="$work_dir/verify-$expected"
+            mkdir -p "$verify_dir"
+            gh release download "$tag" --repo "$repo" --pattern "$expected" --dir "$verify_dir" \
+              || fail "could not download the published asset $expected of the release for tag $tag"
+            cmp -s "$verify_dir/$expected" "$matched_path" \
+              || fail "the published asset $expected of the release for tag $tag does not match the built artifact"
+          done
+
+          echo "Release $tag is published with the assets:"
+          printf '%s\n' "$final_sorted"

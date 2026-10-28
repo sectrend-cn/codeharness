@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  engineering:
+    name: Engineering checks
+    uses: ./.github/workflows/engineering.yml

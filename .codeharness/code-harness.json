@@ -1,0 +1,267 @@
+{
+  "version": 2,
+  "include": [
+    "src/*",
+    "tests/*"
+  ],
+  "exclude": [],
+  "third_party_modules": ["pydantic"],
+  "checkers": {
+    "function_size": {
+      "lines": 50,
+      "statements": 50,
+      "complexity": 10,
+      "nesting": 3,
+      "parameters": 5
+    },
+    "architecture.owner": {
+      "owners": [
+        {
+          "name": "source and diagnostic contracts",
+          "paths": [
+            "src/code_harness/source.py",
+            "src/code_harness/diagnostics.py"
+          ]
+        },
+        {
+          "name": "policy",
+          "paths": [
+            "src/code_harness/policy/*"
+          ]
+        },
+        {
+          "name": "parsing",
+          "paths": [
+            "src/code_harness/parsing/*",
+            "src/code_harness/syntax.py"
+          ]
+        },
+        {
+          "name": "analysis",
+          "paths": [
+            "src/code_harness/analysis/*",
+            "src/code_harness/engine.py"
+          ]
+        },
+        {
+          "name": "agent review",
+          "paths": [
+            "src/code_harness/review/*"
+          ]
+        },
+        {
+          "name": "language plugins",
+          "paths": [
+            "src/code_harness/languages/*"
+          ]
+        },
+        {
+          "name": "plugins",
+          "paths": [
+            "src/code_harness/plugins/*"
+          ]
+        },
+        {
+          "name": "shared semantic and suppression policy",
+          "paths": [
+            "src/code_harness/suppressions.py",
+            "src/code_harness/semantics/*"
+          ]
+        },
+        {
+          "name": "metrics",
+          "paths": [
+            "src/code_harness/metrics/*"
+          ]
+        },
+        {
+          "name": "architecture",
+          "paths": [
+            "src/code_harness/architecture/*",
+            "src/code_harness/architecture.py",
+            "src/code_harness/imports.py"
+          ]
+        },
+        {
+          "name": "CLI and snapshots",
+          "paths": [
+            "src/code_harness/cli.py",
+            "src/code_harness/snapshots.py"
+          ]
+        },
+        {
+          "name": "compatibility exports",
+          "paths": [
+            "src/code_harness/models.py"
+          ]
+        },
+        {
+          "name": "application entry points",
+          "paths": [
+            "src/code_harness/__init__.py",
+            "src/code_harness/__main__.py"
+          ]
+        },
+        {
+          "name": "verification",
+          "paths": [
+            "tests/*"
+          ]
+        }
+      ]
+    },
+    "architecture.structure": {
+      "placements": [
+        {
+          "name": "language rule modules belong with language plugins",
+          "paths": ["src/code_harness/*_rules.py", "src/code_harness/languages/*/rules.py"],
+          "allowed_paths": ["src/code_harness/languages/*"]
+        }
+      ]
+    },
+    "architecture.import": {
+      "boundaries": [
+        {
+          "name": "analysis uses tree-sitter instead of a second Python AST",
+          "sources": ["src/*"],
+          "forbidden_imports": ["ast", "ast.*"]
+        },
+        {
+          "name": "application composition owns analyzer and rule assembly",
+          "sources": ["src/code_harness/languages/*"],
+          "forbidden_imports": [
+            "code_harness.analysis.analyzer",
+            "code_harness.analysis.analyzer.*",
+            "code_harness.plugins.bundles",
+            "code_harness.plugins.bundles.*",
+            "code_harness.plugins.registry",
+            "code_harness.plugins.registry.*",
+            "code_harness.plugins.profiles",
+            "code_harness.plugins.profiles.*",
+            "code_harness.plugins.languages.LanguageRegistry",
+            "code_harness.plugins.builtins",
+            "code_harness.plugins.builtins.*",
+            "code_harness.architecture.rules",
+            "code_harness.architecture.rules.*",
+            "code_harness.architecture.design",
+            "code_harness.architecture.design.*",
+            "code_harness.metrics.MetricRule",
+            "code_harness.metrics.rules",
+            "code_harness.metrics.rules.*",
+            "code_harness.semantics.usage.UsageRule",
+            "code_harness.semantics.projection.rules",
+            "code_harness.semantics.projection.rules.*",
+            "code_harness.semantics.boundaries.BoundaryRule",
+            "code_harness.suppressions.SuppressionRule"
+          ]
+        },
+        {
+          "name": "review rules do not depend on ACP transport",
+          "sources": [
+            "src/code_harness/review/contracts.py",
+            "src/code_harness/review/rules.py",
+            "src/code_harness/review/prompt.py",
+            "src/code_harness/review/submission_models.py",
+            "src/code_harness/review/submissions.py"
+          ],
+          "forbidden_imports": [
+            "acp",
+            "acp.*",
+            "mcp",
+            "mcp.*",
+            "code_harness.review.mcp_server",
+            "code_harness.review.acp",
+            "code_harness.review.channel",
+            "code_harness.review.wire"
+          ]
+        },
+        {
+          "name": "shared analysis and rules do not select concrete languages",
+          "sources": [
+            "src/code_harness/analysis/*",
+            "src/code_harness/plugins/registry.py",
+            "src/code_harness/plugins/bundles.py",
+            "src/code_harness/plugins/languages.py",
+            "src/code_harness/plugins/profiles.py",
+            "src/code_harness/parsing/*",
+            "src/code_harness/metrics/*",
+            "src/code_harness/suppressions.py",
+            "src/code_harness/semantics/*",
+            "src/code_harness/architecture/*"
+          ],
+          "forbidden_imports": [
+            "code_harness.languages",
+            "code_harness.languages.*",
+            "code_harness.plugins.builtins",
+            "code_harness.engine",
+            "code_harness.syntax",
+            "tree_sitter_python",
+            "tree_sitter_go",
+            "tree_sitter_java",
+            "tree_sitter_javascript",
+            "tree_sitter_typescript"
+          ]
+        },
+        {
+          "name": "runtime does not depend on tests",
+          "sources": [
+            "src/*"
+          ],
+          "forbidden_imports": [
+            "tests",
+            "tests.*",
+            "pytest"
+          ]
+        },
+        {
+          "name": "domain contracts do not depend on implementation",
+          "sources": [
+            "src/code_harness/source.py",
+            "src/code_harness/diagnostics.py",
+            "src/code_harness/policy/contracts.py",
+            "src/code_harness/architecture/models.py"
+          ],
+          "forbidden_imports": [
+            "code_harness.*"
+          ]
+        },
+        {
+          "name": "analysis does not depend on CLI or snapshot infrastructure",
+          "sources": [
+            "src/code_harness/analysis/*",
+            "src/code_harness/engine.py",
+            "src/code_harness/plugins/*",
+            "src/code_harness/languages/*",
+            "src/code_harness/review/*",
+            "src/code_harness/suppressions.py",
+            "src/code_harness/semantics/*",
+            "src/code_harness/metrics/*",
+            "src/code_harness/architecture/*",
+            "src/code_harness/architecture.py",
+            "src/code_harness/imports.py",
+            "src/code_harness/syntax.py",
+            "src/code_harness/parsing/*"
+          ],
+          "forbidden_imports": [
+            "code_harness.cli",
+            "code_harness.snapshots",
+            "code_harness.cli.*",
+            "code_harness.snapshots.*"
+          ]
+        }
+      ]
+    },
+    "architecture.object_model": {
+      "paths": [
+        "src/code_harness/suppressions.py",
+        "src/code_harness/semantics/*",
+        "src/code_harness/metrics/*",
+        "src/code_harness/architecture/rules.py",
+        "src/code_harness/architecture/design.py",
+        "src/code_harness/analysis/analyzer.py",
+        "src/code_harness/languages/*",
+        "src/code_harness/review/*"
+      ]
+    }
+  }
+}

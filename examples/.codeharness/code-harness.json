@@ -1,0 +1,47 @@
+{
+  "version": 2,
+  "include": ["src/*", "tests/*"],
+  "exclude": [],
+  "checkers": {
+    "type.broad": {
+      "encoding": {
+        "encoders": ["orjson.dumps"],
+        "decoders": ["orjson.loads"],
+        "outputs": [
+          {"call": "transport.publish", "arguments": [1], "keywords": ["body"]}
+        ]
+      }
+    },
+    "function_size": {
+      "lines": 50,
+      "statements": 50,
+      "complexity": 10,
+      "nesting": 3,
+      "parameters": 5
+    },
+    "architecture.owner": {
+      "owners": [
+        {"name": "domain", "paths": ["src/domain/*"]},
+        {"name": "application", "paths": ["src/application/*"]},
+        {"name": "adapters", "paths": ["src/adapters/*"]},
+        {"name": "tests", "paths": ["tests/*"]}
+      ]
+    },
+    "architecture.import": {
+      "boundaries": [
+        {
+          "name": "domain does not depend on adapters",
+          "sources": ["src/domain/*"],
+          "forbidden_imports": [
+            "adapters",
+            "adapters.*",
+            "src.adapters",
+            "src.adapters.*",
+            "src/adapters/*"
+          ]
+        }
+      ]
+    },
+    "architecture.object_model": {"paths": ["src/domain/rules/*"]}
+  }
+}
