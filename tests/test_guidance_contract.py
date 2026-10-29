@@ -12,6 +12,14 @@ REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 GUIDE_PATH = REPOSITORY_ROOT / "docs/getting-started.md"
 README_PATH = REPOSITORY_ROOT / "README.md"
 SKILL_PATH = REPOSITORY_ROOT / ".agents/skills/code-harness/SKILL.md"
+FEEDBACK_SKILL_PATH = REPOSITORY_ROOT / ".agents/skills/code-harness-feedback/SKILL.md"
+ISSUE_TEMPLATE_PATH = REPOSITORY_ROOT / ".github/ISSUE_TEMPLATE/false-positive.md"
+ISSUE_TEMPLATE_FENCE = "````markdown"
+ISSUE_TEMPLATE_CLOSING_FENCE = "````"
+ISSUE_TEMPLATE_ANCHOR = "## Diagnostic"
+ISSUE_TEMPLATE_NAME = "False positive report"
+ISSUE_TEMPLATE_FRONTMATTER_KEYS = frozenset({"name", "about", "title"})
+ISSUE_TEMPLATE_FORBIDDEN_KEYS = ("labels:", "assignees:")
 AGENT_REFERENCE_PATH = SKILL_PATH.parent / "references/agent-integration.md"
 AGENT_REFERENCE_LINK = "../.agents/skills/code-harness/references/agent-integration.md"
 CHECKER_REFERENCE_PATH = SKILL_PATH.parent / "references/checkers.md"
@@ -186,6 +194,40 @@ def _mentions_language(text: str, language: str) -> bool:
     return re.search(rf"(?<![A-Za-z]){re.escape(language)}(?![A-Za-z])", text) is not None
 
 
+def _split_frontmatter(path: Path) -> tuple[str, str]:
+    """Return the frontmatter and the body of one configuration issue template."""
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    assert lines[0].strip() == "---"
+    closing = next(index for index in range(1, len(lines)) if lines[index].strip() == "---")
+    return "".join(lines[1:closing]), "".join(lines[closing + 1 :])
+
+
+def _frontmatter_keys(path: Path) -> list[str]:
+    """Return the frontmatter key names of one configuration issue template."""
+    frontmatter, _ = _split_frontmatter(path)
+    return [line.split(":", 1)[0].strip() for line in frontmatter.splitlines()]
+
+
+def _skill_issue_template_block() -> str:
+    """Return the issue template body embedded in the feedback skill without its fence."""
+    lines = FEEDBACK_SKILL_PATH.read_text(encoding="utf-8").splitlines()
+    openings = [index for index, line in enumerate(lines) if line.strip() == ISSUE_TEMPLATE_FENCE]
+    assert len(openings) == 1
+    start = openings[0] + 1
+    closing = next(
+        (
+            index
+            for index in range(start, len(lines))
+            if lines[index].strip() == ISSUE_TEMPLATE_CLOSING_FENCE
+        ),
+        None,
+    )
+    assert closing is not None
+    block = "\n".join(lines[start:closing])
+    assert ISSUE_TEMPLATE_ANCHOR in block
+    return block
+
+
 def _triage_section(path: Path) -> str:
     """Return the Triage section body so its wording can be checked in isolation."""
     text = path.read_text(encoding="utf-8")
@@ -205,6 +247,44 @@ def test_skill_commands_parse_with_shipped_cli() -> None:
     assert SKILL_PATH.is_file()
     assert _documented_commands(SKILL_PATH.read_text(encoding="utf-8"))
     assert _rejected_commands(SKILL_PATH) == []
+
+
+def test_feedback_skill_commands_parse_with_shipped_cli() -> None:
+    assert FEEDBACK_SKILL_PATH.is_file()
+    assert _documented_commands(FEEDBACK_SKILL_PATH.read_text(encoding="utf-8"))
+    assert _rejected_commands(FEEDBACK_SKILL_PATH) == []
+
+
+def test_feedback_skill_targets_the_issue_tracker() -> None:
+    assert "https://github.com/sectrend-cn/codeharness/issues/new" in FEEDBACK_SKILL_PATH.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_feedback_issue_template_mirrors_the_skill() -> None:
+    block = _skill_issue_template_block()
+    commands = _documented_commands(block)
+    assert commands
+    assert [command for command in commands if not _accepts(_arguments_for(command))] == []
+    assert ISSUE_TEMPLATE_PATH.is_file()
+    mirror = ISSUE_TEMPLATE_PATH.read_text(encoding="utf-8")
+    headings = SECOND_LEVEL_HEADING.findall(block)
+    assert headings
+    assert set(SECOND_LEVEL_HEADING.findall(mirror)) == set(headings)
+    frontmatter, body = _split_frontmatter(ISSUE_TEMPLATE_PATH)
+    assert body.strip() == block.strip()
+    names = [
+        line.split(":", 1)[1].strip()
+        for line in frontmatter.splitlines()
+        if line.startswith("name:")
+    ]
+    assert names == [ISSUE_TEMPLATE_NAME]
+    assert ISSUE_TEMPLATE_NAME in FEEDBACK_SKILL_PATH.read_text(encoding="utf-8")
+    keys = _frontmatter_keys(ISSUE_TEMPLATE_PATH)
+    assert len(keys) == len(ISSUE_TEMPLATE_FRONTMATTER_KEYS)
+    assert set(keys) == ISSUE_TEMPLATE_FRONTMATTER_KEYS
+    assert [key for key in ISSUE_TEMPLATE_FORBIDDEN_KEYS if key in mirror] == []
+    assert _relative_links(ISSUE_TEMPLATE_PATH) == []
 
 
 def test_guide_quotes_pointer_snippet_verbatim() -> None:
@@ -232,7 +312,13 @@ def test_guide_links_the_agent_reference() -> None:
 
 @pytest.mark.parametrize(
     "document",
-    [SKILL_PATH, AGENT_REFERENCE_PATH, CHECKER_REFERENCE_PATH, *CHECKER_DOCUMENT_PATHS],
+    [
+        SKILL_PATH,
+        FEEDBACK_SKILL_PATH,
+        AGENT_REFERENCE_PATH,
+        CHECKER_REFERENCE_PATH,
+        *CHECKER_DOCUMENT_PATHS,
+    ],
 )
 def test_skill_bundle_repository_links_resolve(document: Path) -> None:
     assert document.is_file()
