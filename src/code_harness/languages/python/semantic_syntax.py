@@ -68,6 +68,16 @@ class PythonSemanticSyntax(PythonResultSyntax):
 
     block_scopes = frozenset[str]()
 
+    def value_type_node(self, node: Node) -> Node | None:
+        """Use only the first list element's explicit constructor name as evidence."""
+        if node.type != "list":
+            return None
+        first = next((child for child in node.named_children if child.type != "comment"), None)
+        if first is None or first.type != "call":
+            return None
+        name = field(first, "function")
+        return name if name is not None and name.type == "identifier" else None
+
     def inherited_types(self, node: Node) -> tuple[Node, ...]:
         bases = field(node, "superclasses")
         return (

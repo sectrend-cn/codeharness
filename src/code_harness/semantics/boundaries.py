@@ -154,16 +154,39 @@ class BoundaryEvidence:
     def _raw_result(self, symbol: Symbol) -> bool:
         if symbol.kind == "field" and self.index.scopes[symbol.scope].externally_used:
             return False
-        value = symbol.value
-        if value is not None:
-            value = self.index.syntax.single_value(value)
-        if (
-            value is None
-            or value.id not in self.calls.difference(self.typed_calls)
-            or not symbol.reads
+        if not symbol.reads or not any(
+            self._external_input(value) for value in self._assigned(symbol)
         ):
             return False
         return not all(self._converted(read) for read in symbol.reads)
+
+    def _assigned(self, symbol: Symbol) -> tuple[Node, ...]:
+        """Collect a binding's own value and the value of every element write."""
+        own = () if symbol.value is None else (symbol.value,)
+        element = tuple(
+            value
+            for target in symbol.writes
+            if self.index.syntax.element_target(target)
+            for value in (self._element_value(target),)
+            if value is not None
+        )
+        return own + element
+
+    def _element_value(self, target: Node) -> Node | None:
+        """Find the value of the nearest assignment whose target encloses one element."""
+        node = target.parent
+        while node is not None:
+            left, right = self.index.syntax.assignment(node)
+            if left is not None:
+                enclosed = left.start_byte <= target.start_byte and target.end_byte <= left.end_byte
+                return right if enclosed else None
+            node = node.parent
+        return None
+
+    def _external_input(self, value: Node) -> bool:
+        """Report third-party call values among one binding's assigned evidence."""
+        node = self.index.syntax.single_value(value)
+        return node.id in self.calls.difference(self.typed_calls)
 
     def _issue(self, node: Node, message: str) -> None:
         self.findings.append(

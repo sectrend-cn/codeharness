@@ -42,6 +42,7 @@ class SemanticNodes(ABC):
     variadic_patterns = frozenset[str]()
     dictionary_names = frozenset[str]()
     dictionary_prefixes: tuple[str, ...] = ()
+    nonvalue_children = frozenset({"comment"})
 
     def identifier(self, node: Node) -> bool:
         return node.type in self.identifiers
@@ -143,16 +144,36 @@ class SemanticNodes(ABC):
         if node.type in self.subscripts:
             return field(node, "value") or field(node, "object") or field(node, "operand")
         if node.type in self.wrappers:
-            return node.named_children[-1] if node.named_children else None
+            values = [
+                child for child in node.named_children if child.type not in self.nonvalue_children
+            ]
+            return values[-1] if values else None
         return None
 
+    def element_target(self, node: Node) -> bool:
+        """Report assignment targets addressing one element of a bound container."""
+        return self.single_value(node).type in self.subscripts
+
     def single_value(self, node: Node) -> Node:
-        if (
-            node.type in {"expression_list", "parenthesized_expression"}
-            and node.named_child_count == 1
-        ):
-            return self.single_value(node.named_children[0])
+        if node.type in {"expression_list", "parenthesized_expression"}:
+            values = [
+                child for child in node.named_children if child.type not in self.nonvalue_children
+            ]
+            if len(values) == 1:
+                return self.single_value(values[0])
         return node
+
+    def value_type_node(self, node: Node) -> Node | None:
+        """Languages opt in to type expressions written beside their values."""
+        return None
+
+    def element_type(self, node: Node) -> Node | None:
+        """Languages opt in to reducing container annotations to their element type."""
+        return None
+
+    def is_call(self, node: Node) -> bool:
+        """Report call syntax; languages without calls answer no."""
+        return node.type in self.calls
 
     def constructor(self, node: Node) -> Node | None:
         if node.type in self.constructors:

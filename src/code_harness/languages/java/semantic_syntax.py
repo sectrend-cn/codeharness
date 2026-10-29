@@ -26,6 +26,7 @@ class JavaSemanticSyntax(SemanticNodes):
         {"class_declaration", "interface_declaration", "enum_declaration", "record_declaration"}
     )
     declarations = frozenset({"variable_declarator"})
+    subscripts = frozenset({"array_access"})
     constructors = frozenset({"object_creation_expression"})
     annotations = frozenset(
         {
@@ -136,6 +137,18 @@ class JavaSemanticSyntax(SemanticNodes):
                 operator = field(parent, "operator")
                 return operator is not None and operator.type != "="
         return super().read(node)
+
+    def wrapped_value(self, node: Node) -> Node | None:
+        """Array access wraps its receiver in the grammar's array field."""
+        if node.type == "array_access":
+            return field(node, "array")
+        return super().wrapped_value(node)
+
+    def value_type_node(self, node: Node) -> Node | None:
+        """Array creation spells the created element type beside its value."""
+        if node.type == "array_creation_expression":
+            return field(node, "type")
+        return None
 
     def declares_local(self, node: Node) -> bool:
         parent = node.parent
