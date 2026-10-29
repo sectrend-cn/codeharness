@@ -84,3 +84,263 @@ def test_java_runtime_equality_is_not_identity_dispatch() -> None:
     )
     findings = check(Source("E.java", content.encode(), Language.JAVA), Policy())
     assert findings == ()
+
+
+_ANNOTATION_ARRAY_VOID_CALL = """class Item {
+    private void m() {}
+}
+
+class E {
+    void run() {
+        Item[] a = new Item[2];
+        a[0].m();
+    }
+}
+"""
+
+_ANNOTATION_ARRAY_DISCARDED_RESULT = """class Item {
+    private int m() { return 1; }
+}
+
+class E {
+    void run() {
+        Item[] a = new Item[2];
+        a[0].m();
+    }
+}
+"""
+
+_VALUE_INFERRED_ARRAY_VOID_CALL = """class Item {
+    private void m() {}
+}
+
+class E {
+    void run() {
+        var b = new Item[]{new Item()};
+        b[0].m();
+    }
+}
+"""
+
+_VALUE_INFERRED_ARRAY_DISCARDED_RESULT = """class Item {
+    private int m() { return 1; }
+}
+
+class E {
+    void run() {
+        var b = new Item[]{new Item()};
+        b[0].m();
+    }
+}
+"""
+
+_NEVER_CALLED_PRIVATE_METHOD = """class Item {
+    private void m() {}
+}
+
+class E {
+    void run() {}
+}
+"""
+
+
+@pytest.mark.parametrize(
+    "content",
+    [_ANNOTATION_ARRAY_VOID_CALL, _VALUE_INFERRED_ARRAY_VOID_CALL],
+    ids=["annotation", "value-inferred"],
+)
+def test_java_array_element_void_calls_resolve(content: str) -> None:
+    assert check(Source("E.java", content.encode(), Language.JAVA), Policy()) == ()
+
+
+@pytest.mark.parametrize(
+    "content",
+    [_ANNOTATION_ARRAY_DISCARDED_RESULT, _VALUE_INFERRED_ARRAY_DISCARDED_RESULT],
+    ids=["annotation", "value-inferred"],
+)
+def test_java_array_element_discarded_results_warn(content: str) -> None:
+    findings = check(Source("E.java", content.encode(), Language.JAVA), Policy())
+    assert [(f.rule, f.line, f.column, f.severity) for f in findings] == [
+        ("unused.return", 8, 9, "warning")
+    ]
+    assert "'m'" in findings[0].message
+
+
+def test_java_never_called_private_method_remains_reported() -> None:
+    findings = check(
+        Source("E.java", _NEVER_CALLED_PRIVATE_METHOD.encode(), Language.JAVA), Policy()
+    )
+    assert [(f.rule, f.line, f.column, f.severity) for f in findings] == [
+        ("unused.function", 2, 18, "error")
+    ]
+    assert "'m'" in findings[0].message
+
+
+_NESTED_ELEMENT_OVERWRITE = """class E {
+    static class Item {
+        private int m() { return 1; }
+    }
+
+    static class Other extends Item {
+        private int m() { return 2; }
+    }
+
+    void run() {
+        var b = new Item[]{new Item()};
+        b[0] = new Other();
+        b[1].m();
+    }
+}
+"""
+
+_NESTED_ELEMENT_DIFFERENT_NAME = """class E {
+    static class Item {
+        private int m() { return 1; }
+    }
+
+    static class Other {
+        private int write() { return 2; }
+    }
+
+    void run() {
+        var b = new Item[]{new Item()};
+        b[0] = new Other();
+        b[1].m();
+    }
+}
+"""
+
+_NESTED_ELEMENT_NEVER_CALLED = """class E {
+    static class Item {
+        private int m() { return 1; }
+    }
+
+    static class Other extends Item {
+        private int m() { return 2; }
+
+        private int spare() { return 3; }
+    }
+
+    void run() {
+        var b = new Item[]{new Item()};
+        b[0] = new Other();
+        b[1].m();
+    }
+}
+"""
+
+
+def test_java_nested_element_write_keeps_the_called_owner() -> None:
+    findings = check(Source("E.java", _NESTED_ELEMENT_OVERWRITE.encode(), Language.JAVA), Policy())
+    assert [(f.rule, f.line, f.column, f.severity) for f in findings] == [
+        ("unused.return", 13, 9, "warning")
+    ]
+    assert "'m'" in findings[0].message
+
+
+def test_java_nested_element_write_of_another_type_keeps_the_owner() -> None:
+    findings = check(
+        Source("E.java", _NESTED_ELEMENT_DIFFERENT_NAME.encode(), Language.JAVA), Policy()
+    )
+    assert [(f.rule, f.line, f.column, f.severity) for f in findings] == [
+        ("unused.function", 7, 21, "error"),
+        ("unused.return", 13, 9, "warning"),
+    ]
+    assert "'write'" in findings[0].message
+    assert "'m'" in findings[1].message
+
+
+def test_java_nested_element_write_keeps_never_called_method_reported() -> None:
+    findings = check(
+        Source("E.java", _NESTED_ELEMENT_NEVER_CALLED.encode(), Language.JAVA), Policy()
+    )
+    assert [(f.rule, f.line, f.column, f.severity) for f in findings] == [
+        ("unused.function", 9, 21, "error"),
+        ("unused.return", 15, 9, "warning"),
+    ]
+    assert "'spare'" in findings[0].message
+    assert "'m'" in findings[1].message
+
+
+_JAVA_ELEMENT_INGRESS = """import vendor.Api;
+
+class E {
+    void run() {
+        int[] items = new int[]{0};
+        items[0] = Api.fetch();
+    }
+}
+"""
+
+_JAVA_ELEMENT_INGRESS_TWICE = """import vendor.Api;
+
+class E {
+    void run() {
+        int[] items = new int[]{0};
+        items[0] = Api.fetch();
+        items[1] = Api.load();
+    }
+}
+"""
+
+_JAVA_ELEMENT_INGRESS_TYPED = """import vendor.Api;
+
+class E {
+    static class Item {
+        private final String raw;
+
+        Item(String raw) {
+            this.raw = raw;
+        }
+
+        private int length() {
+            return raw.length();
+        }
+    }
+
+    void run() {
+        var items = new Item[]{new Item("a")};
+        items[0] = new Item(Api.fetch());
+        System.out.println(items[1].length());
+    }
+}
+"""
+
+_JAVA_REBINDING_INGRESS = """import vendor.Api;
+
+class E {
+    void run() {
+        String result = Api.fetch();
+        System.out.println(result);
+    }
+}
+"""
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        pytest.param(
+            _JAVA_ELEMENT_INGRESS, [("type.boundary", 5, 15, "error")], id="element-write"
+        ),
+        pytest.param(
+            _JAVA_ELEMENT_INGRESS_TWICE, [("type.boundary", 5, 15, "error")], id="two-writes-once"
+        ),
+        pytest.param(_JAVA_ELEMENT_INGRESS_TYPED, [], id="typed-construction-converts"),
+        pytest.param(
+            _JAVA_REBINDING_INGRESS, [("type.boundary", 5, 16, "error")], id="plain-rebinding"
+        ),
+    ],
+)
+def test_java_element_write_keeps_third_party_ingress_reports(
+    content: str, expected: list[tuple[str, int, int, str]]
+) -> None:
+    findings = check(
+        Source("E.java", content.encode(), Language.JAVA),
+        Policy(third_party_modules=("vendor.Api",)),
+    )
+    assert [(f.rule, f.line, f.column, f.severity) for f in findings] == expected
+    assert all(
+        f.message == "Convert the third-party result into a typed object at ingress"
+        for f in findings
+    )

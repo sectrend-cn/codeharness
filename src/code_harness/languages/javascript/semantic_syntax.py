@@ -74,6 +74,18 @@ class JavaScriptSemanticSyntax(SemanticNodes):
 
     block_scopes = frozenset({"statement_block", "catch_clause"})
 
+    def value_type_node(self, node: Node) -> Node | None:
+        """Use the first array element's constructor name without skipping holes."""
+        if node.type != "array":
+            return None
+        first = next(
+            (child for child in node.children if child.type not in {"[", "]", "comment"}), None
+        )
+        if first is None or first.type not in {"new_expression", "call_expression"}:
+            return None
+        name = field(first, "constructor") or field(first, "function")
+        return name if name is not None and name.type == "identifier" else None
+
     def base_receiver(self, node: Node) -> bool:
         return node.type == "super"
 

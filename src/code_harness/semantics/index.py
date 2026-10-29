@@ -22,6 +22,7 @@ class SemanticIndex:
         self.imported_classes: dict[str, Scope] = {}
         self.peer_symbols: dict[str, Symbol] = {}
         self.unresolved_reads: set[str] = set()
+        self.attached_members: set[int] = set()
         self._declare(context.root, 0)
         self._imports()
         self._receivers()
@@ -167,10 +168,12 @@ class SemanticIndex:
             method = self.functions.get(scope.node.id)
             if owner is not None and method is not None:
                 owner.symbols[method.name] = method
+                self.attached_members.add(method.node.id)
 
     def _annotation_scope(self, node: Node | None) -> Scope | None:
         if node is None:
             return None
+        node = self.syntax.element_type(node) or node
         for child in walk(node):
             symbol = self.resolve(child)
             if symbol is not None and symbol.kind == "class":
@@ -200,6 +203,8 @@ class SemanticIndex:
         if symbol is not None:
             if target not in symbol.writes:
                 symbol.writes.append(target)
+            if self.syntax.element_target(target):
+                return
             if symbol.kind != "function":
                 symbol.value = value
                 symbol.annotation = annotation or symbol.annotation
@@ -230,11 +235,40 @@ class SemanticIndex:
         if value is None:
             return ""
         value = self.syntax.single_value(value)
+        node = self._spelled_value_type(value)
+        if node is not None:
+            return self._declared_type(self.syntax.element_type(node) or node)
         callee = self.syntax.constructor(value)
         if callee is not None:
             return self._declared_type(callee)
         symbol = self.resolve(value)
         return symbol.type_name if symbol is not None else ""
+
+    def _spelled_value_type(self, value: Node) -> Node | None:
+        """Accept a spelled value type only where no declared binding stands behind it."""
+        node = self.syntax.value_type_node(value)
+        if node is None or self._shadowed_call(value) or self._shadowed_name(node):
+            return None
+        return node
+
+    def _shadowed_name(self, node: Node) -> bool:
+        """Report whether a declared non-class binding owns a spelled type name."""
+        symbol = self.resolve(node)
+        return symbol is not None and symbol.kind != "class"
+
+    def _shadowed_call(self, value: Node) -> bool:
+        """Report whether a real call target already owns this value's type."""
+        current: Node | None = value
+        while current is not None:
+            callee = self.syntax.constructor(current) if self.syntax.is_call(current) else None
+            if callee is not None:
+                return self._declared_call_target(callee)
+            current = self.syntax.wrapped_value(current)
+        return False
+
+    def _declared_call_target(self, callee: Node) -> bool:
+        """Outrank spelling whenever the call target resolves to a declared symbol."""
+        return self.resolve(callee) is not None or self._call_scope(callee) is not None
 
     def _member(self, node: Node) -> Symbol | None:
         receiver, name = self.syntax.member_parts(node)
@@ -289,6 +323,9 @@ class SemanticIndex:
         if value is None:
             return None
         value = self.syntax.single_value(value)
+        node = self._spelled_value_type(value)
+        if node is not None:
+            return self._annotation_scope(node)
         callee = self.syntax.constructor(value)
         if callee is not None:
             return self._call_scope(callee)

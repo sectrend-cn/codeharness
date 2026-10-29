@@ -41,7 +41,11 @@ class UsageRule:
         uncertain = unresolved.union(index.unresolved_reads)
         findings: list[Finding] = []
         for symbol in index.symbols():
-            member = symbol.kind == "field" or bool(index.scopes[symbol.scope].owner)
+            member = (
+                symbol.kind == "field"
+                or bool(index.scopes[symbol.scope].owner)
+                or symbol.node.id in index.attached_members
+            )
             if member and symbol.name in uncertain:
                 continue
             if self._unused(symbol, index, contract_reads):
