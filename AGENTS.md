@@ -2,7 +2,9 @@
 
 Read `docs/engineering-standards.md` before changing or reviewing authored code.
 It defines shared style, type preservation, ownership, dependency direction,
-function limits and semantic review obligations for Python, Go and JavaScript/TypeScript.
+function limits and semantic review obligations for Python, Go, Java and JavaScript/TypeScript.
+
+Agent sessions should read `.agents/skills/code-harness/SKILL.md` before gate tasks.
 
 - Preserve concrete types across production code, tests, helpers and scripts.
   No broad carriers, casts or serialization round trips to bypass type checking.

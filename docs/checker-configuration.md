@@ -13,13 +13,14 @@ The bundled agent skill repeats these facts per checker under
 [the checker index](../.agents/skills/code-harness/references/checkers.md), one
 page per checker in `references/checkers/`; change both carriers in the same batch.
 
-Existing root-level policies must move to `.codeharness/code-harness.json`, or be
-selected explicitly with `--config code-harness.json`. There is no automatic
-fallback to a root-level policy. `--config` remains relative to `--root` in every
-mode; staged checks read that exact path from the index and reject staged policy
-changes pending a full audit and review.
+`--config` selects the policy path; it stays relative to `--root` in every mode and
+must name a path inside the root. There is no automatic fallback to a root-level
+policy file. Staged checks read that exact path from the index and reject staged
+policy changes pending a full audit and review.
 
-Version 2 separates global file selection from checker options:
+Checker settings belong under `checkers`; top-level checker settings are rejected.
+
+The policy separates global file selection from checker options:
 
 ```json
 {
@@ -82,8 +83,8 @@ Architecture-specific paths select where that one architecture check applies;
 they do not remove files from other checkers.
 
 The schema covers 18 logical checkers, which produce 22 built-in diagnostic IDs.
-See [Guarded field projections](guarded-projection.md) for language syntax,
-region boundaries, evidence and a configuration example.
+Language syntax, region boundaries and a configuration example are documented in
+[the guarded projection checker reference](../.agents/skills/code-harness/references/checkers/structure.guarded_projection.md).
 Custom plugin settings continue
 to belong to their typed plugin constructors; arbitrary custom checker names in
 this JSON are rejected.
@@ -101,6 +102,9 @@ applies rather than enabling or disabling it. `owners` is not a scope selector:
 when it is configured and the checker is enabled, every selected file must match
 exactly one owner. Both are described in [Options by checker](#options-by-checker).
 Coverage differences therefore come only from the diagnostics an analyzer registers.
+
+Java analysis uses the locked `tree-sitter-java` grammar and needs no JDK or build
+step.
 
 Every analyzer registers the same base set of 17 diagnostic IDs:
 
@@ -167,12 +171,15 @@ analysis. Disabling a checker does not permit broken plugin registration.
 
 Parsing constructs the context used by enabled checks. Invalid syntax emits
 warnings on stderr, including when `--format json` is selected, and checks
-continue on the recovered tree. These warnings disclose that results may be
-inaccurate; they are not defects and do not affect the exit status. Every language
-uses a tree-sitter context. Rules consume the available recovered syntax, while
-analyses requiring complete evidence may be unavailable. Parser infrastructure
-and semantic preparation failures return exit 2. When every diagnostic provided by an analyzer is disabled,
-parsing and bundle execution are skipped.
+continue on the recovered tree. Parser warnings are recorded apart from findings
+and never change defect counts or the exit status; they disclose that results may
+be inaccurate. Every language uses a tree-sitter context. Rules consume the
+available recovered syntax, while analyses requiring complete evidence may be
+unavailable. For Java, recovered syntax produces warnings and still permits syntax
+checks, while usage and boundary diagnostics require a complete parse. Parser
+infrastructure and semantic preparation failures return exit 2. When every
+diagnostic provided by an analyzer is disabled, parsing and bundle execution are
+skipped.
 
 `syntax.invalid` has been removed from the checker schema and rule declarations.
 Remove any `checkers["syntax.invalid"]` entry from existing policies; it is now
@@ -183,184 +190,6 @@ thresholds, ownership assignments, dependency boundaries, and extension paths.
 Changing enable flags is a policy change subject to the same full-audit and review
 requirements as changing thresholds or boundaries. Staged-policy changes remain
 blocked by the staged gate; unstaged options do not alter index-based checks.
-
-## Migrating version 1
-
-Version 1 and its top-level checker settings are rejected; update the version and
-move settings as follows. Paths, names, and import patterns retain their meaning.
-
-| Previous location | Version 2 location |
-| --- | --- |
-| `limits.lines` | `checkers.function_size.lines` |
-| `limits.statements` | `checkers.function_size.statements` |
-| `limits.complexity` | `checkers.function_size.complexity` |
-| `limits.nesting` | `checkers.function_size.nesting` |
-| `limits.parameters` | `checkers.function_size.parameters` |
-| `owners` | `checkers["architecture.owner"].owners` |
-| `boundaries` | `checkers["architecture.import"].boundaries` |
-| `class_modules` | `checkers["architecture.object_model"].paths` |
-| `include` / `exclude` | Unchanged at the top level |
-
-Python callers use concrete fields such as
-`Policy(checkers=Checkers(function_size=FunctionSizeOptions(lines=40)))`. `Limits` and the old `Policy` constructor arguments are replaced by
-checker-specific option contracts in `code_harness.policy.models`.
-
-The earlier per-diagnostic version 2 layout is superseded: replace the five
-`size.*` checker entries with `function_size`, moving each `maximum` to the
-corresponding named threshold. Old `size.*` configuration keys are rejected.
-There is one enable flag for the whole group. Remove explicit `enabled: true`
-fields and entries left empty by that removal; omitted checkers stay enabled.
-
-## Initial validation and architecture review
-
-The following records the 2026-09-28 per-diagnostic configuration before the
-function-size grouping. Current grouping validation is recorded below.
-
-Validated on 2026-09-28 against the working tree, including its existing plugin
-and agent-review changes:
-
-| Command | Result |
-| --- | --- |
-| `uv run --no-sync code-harness --all` | 60 files, zero findings; every checker enabled |
-| `uv run --no-sync mypy src tests` | Passed, 59 source files |
-| `uv run --no-sync ruff check src tests` | Passed |
-| `uv run --no-sync ruff format --check src tests` | Passed, 60 files |
-| `uv run --no-sync pytest -q` | 245 passed |
-| `git diff --check` | Passed |
-
-The policy contracts remain canonical in `policy/models.py`. Concrete option
-fields carry thresholds and architecture data directly to their consumers.
-Shared registries receive only a projection of disabled diagnostic IDs; they do
-not depend on language implementations or erase and reconstruct option types.
-Ownership evaluation and import evaluation remain separately controlled within
-the architecture bundle. Registration and output validation remain enforced.
-
-Comparison with the pre-change working-tree policy confirmed identical include
-patterns, 14 owner assignments, five dependency boundaries, and eight object-model
-path patterns. No exclusions, increased thresholds, or disabled checks were added
-to the repository policy. Version 2 and removal of `Limits` are intentional
-configuration/API changes; the migration table above describes the replacements.
-
-| Requirement or risk | Behavioral evidence |
-| --- | --- |
-| One enable flag affects one diagnostic | `test_disabling_one_checker_preserves_other_findings` covers all 15 non-parser built-ins |
-| Shared checkers work across languages | `test_shared_type_checker_flag_applies_across_languages` and retained grammar tests |
-| Invalid options fail closed; defaults remain independent | `test_invalid_or_misplaced_checker_options_are_rejected`, `test_partial_options_preserve_other_metric_defaults` |
-| Disabled bundles do not run | `test_fully_disabled_bundle_is_not_invoked` |
-| Disabled findings cannot hide invalid plugin output | `test_disabled_findings_do_not_hide_invalid_bundle_output` |
-| Parser prerequisites and complete disabling | `test_syntax_is_not_a_configurable_checker`, `test_disabling_all_analyzer_rules_skips_parsing`, `test_syntax_warnings.py` |
-| Global scope and visible disabling | `test_global_scope_and_disabled_checkers_are_reported` |
-| Working-tree flags cannot weaken staged checks | `test_unstaged_disable_does_not_change_staged_enforcement` |
-
-Branch coverage was measured using the cached isolated `coverage==7.13.4` tool,
-without changing dependencies or the lockfile. Full-runtime statement coverage was
-1,463/1,508 (97.0%); branch coverage was 364/398 (91.5%). Relative to the preserved
-working-tree snapshot immediately before this task, changed executable lines were
-76/76 covered, and branches originating on changed lines were 20/20 covered.
-There were no uncovered changed executable lines or partial changed branches.
-Existing gaps remain in compatibility entry points, import resolution, metric and
-annotation edge cases, snapshot errors, and agent transport/submission failures.
-Coverage does not prove semantic architecture quality or custom plugin behavior.
-
-## Function-size grouping validation — 2026-09-29
-
-The revised version 2 configuration groups all five function metrics under
-`function_size`. `FunctionSizeOptions` owns their concrete thresholds and canonical
-diagnostic IDs. Execution expands one disabled checker into those five diagnostic
-IDs; reports retain the configured checker name. Shared registries and dependency
-directions are unchanged. No type exceptions were introduced.
-
-The repository configuration omits every explicit enable flag and all entries
-that only enabled a default checker. Comparison with the preserved pre-change
-file verified unchanged global selection, architecture data, and effective metric
-limits. Every checker remains enabled through its default.
-
-Validation completed:
-
-| Command | Result |
-| --- | --- |
-| `uv run --no-sync code-harness --all` | 60 files, zero findings |
-| `uv run --no-sync mypy src tests` | Passed, 59 source files |
-| `uv run --no-sync ruff check src tests` | Passed |
-| `uv run --no-sync ruff format --check src tests` | Passed, 60 files |
-| `uv run --no-sync pytest -q` | 252 passed |
-| `git diff --check` | Passed |
-
-Existing metric cases retain their diagnostic assertions while configuring the
-shared checker. `test_function_size_switch_disables_all_metrics_and_preserves_type_checks`
-verifies that one flag disables all five metrics while type checking remains
-active. `test_function_size_disabled_report_uses_the_checker_name` verifies both
-report formats. Partial-option/default tests verify implicit enabling and unchanged
-unspecified limits; old per-metric configuration keys are explicitly rejected.
-
-Coverage measured with isolated cached `coverage==7.13.4`: 1,464/1,509 statements
-(97.0%) and 366/400 branches (91.5%). Against the snapshot immediately before this
-grouping, changed executable lines were 19/19 covered and changed branches were
-2/2 covered, with no changed coverage gaps. The previously recorded runtime gaps
-remain outside this change; no dependency or lockfile update was needed.
-
-## Repository policy location — 2026-09-29
-
-The CLI now defaults to `.codeharness/code-harness.json`. The repository policy was
-relocated byte-for-byte: scope, all 14 owners, five dependency boundaries,
-function limits and object-model paths are unchanged. Policy interpretation
-remains in `policy/models.py`; CLI selection and snapshot reading keep their
-existing responsibilities. No contracts, dependency directions or type exceptions
-were added. Explicit `--config` paths remain supported.
-
-Validation: the full gate checked 60 files with zero findings; mypy passed for
-59 source files; Ruff lint and formatting checks passed; all 255 tests passed.
-The CLI tests cover missing defaults, explicit legacy paths, default-versus-custom
-policy selection, root-relative example boundaries and staged policy protection.
-Isolated `coverage==7.13.4` measured the 23 CLI tests: all 66 statements and all
-14 branches in `cli.py` were covered, including the changed default argument.
-No executable branches were introduced. This focused measurement does not claim
-coverage of container execution or eliminate the semantic limits described above.
-
-The local `linux/amd64` image `code-harness:0.1.0` was built successfully
-(image ID `fd04b3a97f3c`). Container smoke checks passed with networking disabled
-and read-only mounts: the 60-file full audit returned 0, Git base selection
-returned 0 for an unchanged fixture, staged violations returned 1 despite a clean
-working copy, and malformed policy returned 2. Repository Git status was unchanged.
-
-## Syntax warnings — 2026-09-29
-
-`syntax.invalid` is removed from built-in registration and the policy schema.
-Parser-owned `ParseWarning` evidence is logged separately from `Finding` and
-never changes defect counts or exit status. Recovered tree contexts continue
-through the existing typed bundles. `PythonContext.module` explicitly represents
-AST absence with `ast.Module | None`; AST consumers narrow it before use, while
-metrics, suppression comments and tree-based architecture checks continue.
-Custom parsers raising `SyntaxFailure` now supply `tuple[ParseWarning, ...]` and
-must explain unavailable dependent checks in their warnings.
-
-Architecture review: diagnostic contracts remain in `diagnostics.py`, recovery
-stays in the parsing owner, and plugin registration owns rule declarations.
-No casts, broad carriers, reconstructed ASTs or type exceptions were introduced.
-The repository policy, source selection, ownership and dependency boundaries are
-unchanged. Python AST failure still prevents AST-dependent type/import evidence;
-recovered syntax can produce incomplete or inaccurate findings. Infrastructure
-and plugin execution failures remain errors.
-
-Validation passed:
-
-- `uv run --no-sync code-harness --all`: 61 files, zero findings.
-- `uv run --no-sync mypy src tests`: 60 source files, no issues.
-- `uv run --no-sync ruff check src tests`: passed.
-- `uv run --no-sync ruff format --check src tests`: 61 files formatted.
-- `uv run --no-sync pytest -q`: 264 passed.
-- `git diff --check`: passed.
-
-The 154-test focused suite covers all five grammars, available checks after
-recovery, Python AST-only rejection, checker removal, plugin registration,
-warning-only success, independent defects, stderr warnings with text/JSON output
-and preservation of source files. Isolated `coverage==7.13.4` measurement of this
-suite covered 34/34 changed executable production lines and 14/14 branches from
-changed lines. Coverage data and XML were written under `/tmp`; dependencies and
-the lockfile were unchanged. This focused measurement does not claim complete
-runtime or subprocess coverage; unchanged import-resolution, annotation and
-traversal branches remain outside its coverage.
-
 
 ## Third-party boundaries and usage
 
@@ -397,6 +226,11 @@ expressions, retain that contract. Type-only schema metadata and fields material
 by a configured external metaclass are not raw application result carriers.
 Mechanical recognition of a conversion does not prove its validator is honest.
 
+In Python, decorator factories supply declaration behavior rather than application
+payloads, while ordinary third-party payload results still require ingress
+conversion. This does not add a general payload exemption for decorators'
+arguments.
+
 Objects passed to configured libraries, including callback return objects, have
 all their declared fields treated as consumed. Configured external base classes
 also consume their class objects through metaclass construction. This repository
@@ -418,6 +252,11 @@ unrelated same-named methods and constructors do not gain this exemption. This
 also applies to imported bases and JS/TS `extends` clauses. Structural interface
 relationships without resolved inheritance still require review. Python
 `self`/`cls`, JS `this`, and blank `_` bindings are not unused-parameter candidates.
+TypeScript constructor parameters marked `public`, `protected`, `private` or
+`readonly` can declare instance properties, and `unused.parameter` accepts
+resolved reads of those properties as usage of the exact constructor parameter
+declaration. Initialization and writes alone remain insufficient, and ordinary
+parameters or unrelated declarations with the same name remain reportable.
 
 `--all` links all selected snapshots. Changed audits read unchanged reference
 files from the same view: working files for `--base`, index blobs for `--staged`.
@@ -474,8 +313,12 @@ Import resolution uses the available policy-selected snapshots; package/build
 alias resolution is not a replacement for language tooling. Review remaining
 candidates before changing code. The gate never removes or rewrites unused code.
 
-Validation and architecture evidence: [boundary and usage validation](usage-validation.md).
-
+Java evidence is syntax-backed rather than javac type checking. Overload selection,
+generic substitution, reflection, annotation processing, generated accessors,
+wildcard/static-member project linking, fully qualified expression resolution and
+external classpaths are not resolved at compiler level. Nested or anonymous class
+ownership, generated members and unresolved external references retain the shared
+engine's inference limits.
 
 ## Python JSON encoding
 
@@ -539,49 +382,6 @@ Stable single-assignment aliases are supported; this is not control-flow-sensiti
 alias analysis. Other serializers and unrecognized output APIs remain outside
 this JSON check's coverage.
 
-Initial validation before broad-type grouping: all 412 tests passed;
-`uv run --no-sync mypy src tests`,
-`uv run --no-sync ruff check src tests`, and
-`uv run --no-sync ruff format --check src tests` pass. The full
-`uv run --no-sync code-harness --all` audit checks 72 files with zero errors and
-34 existing discarded-return warnings. `git diff --check` passes.
-
-The 218-test focused branch-coverage run covers 65 of 67 changed executable
-production lines. All 42 changed executable lines in `python_rules.py` are
-covered, with no partial changed branches there. The two uncovered statements
-and partial branches are the defensive cycle and parentless-node rejection
-paths in `BoundaryEvidence.is_library_input`; ordinary source fixtures did not
-reach them. These are retained safety guards, not waived findings. Tests cover
-internal encoding, import aliases and shadowing, exact configured modules,
-callback direction, mixed consumers, reassignment, nested payload values,
-round-trip rejection, independent checker settings and CLI source preservation.
-
-Architecture review: `PythonTypeRule` owns broad-type diagnostics and delegates
-JSON recognition to its private `_PythonJsonEncoding` component;
-`BoundaryEvidence` owns outbound-use classification; existing `ImportedName`,
-`Symbol`, `Node`, `Policy` and `Finding` contracts remain concrete throughout.
-Registration stays in the Python language plugin. No ownership assignments,
-dependency boundaries, exclusions, existing checker settings or dependency pins
-were changed. JSON encoding uses the existing `type.broad` checker, enabled by
-default. There is no separate `type.erasure` checker or setting.
-
-
-Broad-type grouping validation (2026-09-30): all 415 tests pass, along with the
-full gate, mypy, Ruff lint and formatting commands above. The full gate retains
-72 files, zero errors and 34 discarded-return warnings. The focused 221-test
-coverage run covers all five changed executable production lines relative to
-the pre-grouping snapshot, with no partial changed branches. Existing defensive
-coverage gaps recorded above remain outside this grouping change.
-
-The shared-switch regression exercises both `typing.Any` and JSON encoding in
-the same source and verifies that disabling `type.broad` removes both broad-type
-findings while preserving `type.annotation` findings for `Any` and `object`.
-CLI output and disabled-checker reporting use `type.broad`; the superseded
-`type.erasure` configuration key is rejected. JSON recognition reuses the same
-`BoundaryEvidence` instance as the other Python type checks, and the existing
-Python type bundle remains the single owner of the diagnostic.
-
-
 ## Source structure
 
 `architecture.structure` enforces declared source-placement conventions. A file
@@ -592,25 +392,25 @@ shell matching, where `*` can span directory separators. Paths are repository
 relative and pass through the same global include/exclude selection as other
 checks. The checker defaults to enabled with an empty `placements` list.
 
-For example, this repository requires rule modules named `*_rules.py` to live
-with the language plugins:
+For example, this repository requires language rule modules — `*_rules.py`
+modules and each language's `rules.py` — to live with the language plugins:
 
 ```json
 "architecture.structure": {
   "placements": [{
     "name": "language rule modules belong with language plugins",
-    "paths": ["src/code_harness/*_rules.py"],
+    "paths": ["src/code_harness/*_rules.py", "src/code_harness/languages/*/rules.py"],
     "allowed_paths": ["src/code_harness/languages/*"]
   }]
 }
 ```
 
 `src/code_harness/python_rules.py` fails this constraint even if another policy
-assigns it a valid owner. `src/code_harness/languages/python_rules.py` passes.
-The Python plugin now imports the latter; its complete rule implementation,
-including the JSON erasure changes, was moved without content changes. The
-language owner already covers the new path. Existing dependency restrictions
-and object-model checks follow the moved module.
+assigns it a valid owner. `src/code_harness/languages/python/rules.py` passes:
+the `src/code_harness/languages/*/rules.py` pattern covers that path. Application
+composition in `plugins/builtins.py` imports `PythonTypeRule` from this module:
+the language owner covers that path, and existing dependency restrictions and
+object-model checks apply to it.
 
 Placement, ownership and import restrictions have independent enable flags.
 Placement diagnostics report the source path at line 1, name the constraint and
@@ -624,44 +424,6 @@ its name, detect every misplaced class, or prove that a shared abstraction has
 real consumers. Those remain source-structure review obligations. The configured
 `*_rules.py` convention covers this project's language rule modules; other
 projects should declare their own domain-specific placements.
-
-Validation (2026-09-30): `uv run --no-sync code-harness --all` checks 73 files
-with zero errors and 34 existing discarded-return warnings. All 440 tests pass;
-`uv run --no-sync mypy src tests`, `uv run --no-sync ruff check src tests`,
-`uv run --no-sync ruff format --check src tests` and `git diff --check` pass.
-The 139-test focused branch-coverage run covers all 44 statements in the
-architecture rule owner and all 65 policy statements. One pre-existing import
-boundary branch remains unexercised by that focused run; the new structure
-check has no uncovered statements or partial branches.
-
-Architecture audit compared the final policy with the preserved pre-move
-snapshot. The new structural constraint is enabled, the Python rule module
-belongs to the existing language owner, and source selectors follow the move.
-Global include/exclude patterns, third-party configuration, metric limits,
-checker switches, boundary names and forbidden imports are preserved. The moved
-module is byte-identical to that snapshot, including the earlier JSON work.
-Tests demonstrate rejection of its former location and acceptance of its new
-location under the actual project policy, enforcement across all five grammars,
-independence from ownership/import checking, exact path patterns, malformed
-configuration, syntax recovery, CLI reporting and staged path preservation.
-
-## Language/rule decoupling policy (2026-09-30)
-
-The [decoupling design](language-rule-decoupling.md) is implemented with one
-tree-sitter context, typed grammar capabilities, shared rules and application-owned
-composition. The repository's version 2 policy rejects runtime `ast` dependencies
-and language-module imports of analyzer assembly, registries and concrete shared
-rule evaluators. Ownership, placement and dependency selectors follow the new
-metric package and nested language modules. The policy schema is unchanged;
-extension API version 2 is a separate compatibility change.
-
-The initial documentation-only audit exposed 26 architecture errors across six
-runtime files, plus 34 prior warnings. That result is historical: the runtime
-migration now resolves the prohibited dependencies. See the design's implementation
-validation for final audit results and review findings. Earlier records above
-which describe `PythonContext`, Python AST rejection or language-owned rule
-registration refer to the prior API 1 runtime.
-
 
 ## Shared JSON analysis across languages
 
@@ -698,7 +460,6 @@ this exemption. Computed members, destructured aliases, runtime monkey-patching,
 control-flow-sensitive reassignment, and cross-function value flow are not proved.
 Go and Java also register serializer-specific adapters; their exact signatures
 and output proofs are documented below.
-
 
 ## Configuring encoding APIs
 
@@ -907,9 +668,6 @@ shadowing checks. Local variable initializers and conditional result branches
 retain all-consumer flow. The encoded value used as a condition, in another
 argument, or by an internal consumer still produces a finding.
 
-See [cross-language design and validation](instance-output-language-extension.md)
-for regression scope, API references and executed gates.
-
 Custom Python construction uses `BroadTypeOptions(encoding=EncodingOptions(...))`
 inside `Checkers(type_broad=...)`; use `BroadTypeOptions(enabled=False)` to disable
 that checker. `CheckerOptions` remains the concrete option type for checkers without
@@ -920,28 +678,9 @@ the actual API contract and payload positions before adding an output. Normal
 policy review and staged-policy safeguards apply. No project exclusions or checker
 thresholds need to change to adopt this configuration.
 
-Encoding configuration validation (2026-10-08): all 835 tests passed. The new
-fixtures cover custom encoder/decoder identities, payload positions and keywords,
-import/callable aliases, shadowing, containers, ambiguous splats, argument comments,
-decoder precedence, retained third-party input policy, strict malformed-config
-rejection, CLI diagnostics and staged-policy isolation. Typed schema validation
-uses a model validator; a regression confirms that Python decorator factories are
-declaration behavior while ordinary library payload results still require ingress
-conversion. This does not add a general payload exemption for decorators' arguments.
+## Checker-owned registration
 
-`uv run --no-sync mypy src tests`, `uv run --no-sync ruff check src tests`,
-`uv run --no-sync ruff format --check src tests`, and `git diff --check` passed.
-The full `uv run --no-sync code-harness --all` audit checked 123 files with zero
-errors and 47 discarded-return warnings. Architecture review keeps policy contracts
-in `policy/models.py`, argument interpretation in the language adapters, and
-configuration matching in shared encoding semantics. Existing ownership paths
-cover the implementation. The repository's active policy and exclusions remain
-unchanged; only the example policy declares additional APIs.
-
-
-## Checker-owned registration — 2026-10-08
-
-`Checkers` now explicitly composes typed configuration fragments. It declares no
+`Checkers` explicitly composes typed configuration fragments. It declares no
 checker fields or checker-name list itself. Owners declare their concrete options,
 configuration key and diagnostic mapping beside the associated checker contracts:
 
@@ -973,38 +712,12 @@ then participate automatically. Runtime discovery of arbitrary checker schemas i
 outside this API. Each overriding `checker_states()` must include
 `super().checker_states()`; the field-registration invariant rejects omissions.
 
-Version 2 JSON, existing Python option constructors and imports from
-`policy.models` remain supported. That module now owns composition and re-exports
-canonical option classes rather than defining them. Package-level `MetricRule`
+Policy JSON, the Python option constructors and imports from `policy.models`
+are supported. That module owns composition and re-exports canonical option
+classes rather than defining them. Package-level `MetricRule`
 and `ArchitectureRule` exports load their concrete implementations lazily, so
 importing checker contracts does not create an execution-to-policy import cycle.
 
-Architecture review: the leaf-contract import restriction moves from
-`policy/models.py` to `policy/contracts.py`, which imports no application modules.
-The composition module imports owner contracts; runtime checkers consume their
-owner's definitions and concrete policy fields. Existing owner path patterns cover
-all added files. Includes, excludes, thresholds, enabled settings and other
-boundary selectors are unchanged. Earlier validation sections describe the
-historical centralized contract layout.
-
-Behavioral evidence in `tests/test_checker_registration.py` covers a project
-checker with its own concrete options and two diagnostics, invalid and disabled
-configuration, isolated defaults, constructor identity, aliases, explicit opt-in,
-all built-in switches, diagnostic coverage, conflicts, missing registrations and
-compatible package exports. Existing checker, CLI, staged-policy and encoding
-tests retain their behavioral assertions.
-
-
-Registration validation: `uv run --no-sync pytest -q` passes all 869 tests.
-`uv run --no-sync mypy src tests`, `uv run --no-sync ruff check src tests`,
-`uv run --no-sync ruff format --check src tests` and `git diff --check` pass.
-The full `uv run --no-sync code-harness --all` audit checks 130 files with zero
-errors and 47 existing discarded-return warnings. No checker is disabled.
-
-The focused 376-test run uses cached `coverage==7.16.2` with branch measurement,
-without changing project dependencies. It covers all 233 changed executable
-production lines and all 16 branch exits originating on changed lines, including
-registration conflicts, missing field registrations and lazy-export failures.
-The nine configuration and package-export modules have 196/196 statements and
-16/16 branch exits covered. These figures measure this refactor; existing semantic
-inference limitations remain as documented above.
+`policy/contracts.py` holds the leaf contracts and imports no application modules.
+The composition module imports owner contracts, and runtime checkers consume their
+owner's definitions and concrete policy fields.

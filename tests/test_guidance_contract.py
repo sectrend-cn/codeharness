@@ -24,6 +24,8 @@ AGENT_REFERENCE_PATH = SKILL_PATH.parent / "references/agent-integration.md"
 AGENT_REFERENCE_LINK = "../.agents/skills/code-harness/references/agent-integration.md"
 CHECKER_REFERENCE_PATH = SKILL_PATH.parent / "references/checkers.md"
 CHECKER_REFERENCE_LINK = "references/checkers.md"
+SUPPRESSION_REFERENCE_PATH = SKILL_PATH.parent / "references/comment-suppressions.md"
+POLICY_SAMPLE_PATH = SKILL_PATH.parent / "references/policy-sample.md"
 CHECKER_DOCUMENT_DIRECTORY = SKILL_PATH.parent / "references/checkers"
 
 CHECKER_IDS = frozenset(
@@ -317,6 +319,8 @@ def test_guide_links_the_agent_reference() -> None:
         FEEDBACK_SKILL_PATH,
         AGENT_REFERENCE_PATH,
         CHECKER_REFERENCE_PATH,
+        SUPPRESSION_REFERENCE_PATH,
+        POLICY_SAMPLE_PATH,
         *CHECKER_DOCUMENT_PATHS,
     ],
 )

@@ -8,6 +8,7 @@ locations.
 **Severity**: error.
 
 **Languages**: every analyzer; the check is structural and language-independent.
+
 A file matching a placement's `paths` must also match at least one of that
 placement's `allowed_paths`. Each matching placement is enforced independently,
 and an unrelated placement does not affect the file. Findings name the constraint

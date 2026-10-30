@@ -104,8 +104,8 @@ type Payload any
 The same `//` form is available in Java, JavaScript, JSX, TypeScript and TSX.
 The directive is a standalone comment on the physical line immediately before
 the finding, naming one exact diagnostic ID and followed by `-- ` and a nonblank
-reason. The complete syntax and validation rules live in
-`docs/comment-suppressions.md` in the code-harness source checkout.
+reason. The constraints below are the validation rules that govern a valid
+directive.
 
 State these constraints when you recommend it:
 

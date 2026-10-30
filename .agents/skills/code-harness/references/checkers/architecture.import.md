@@ -6,12 +6,14 @@ Reports dependencies forbidden by the configured boundaries.
 
 **Severity**: error.
 
-**Languages**: every analyzer; selectors use language-appropriate names. Python
-and Go boundaries use module-name patterns, and Python relative imports are
-normalized using their source directory. JavaScript and TypeScript boundaries use
-module specifiers or normalized relative path patterns, with and without source
-extensions, and relative imports also match root-relative paths. Java imports use
-qualified type and member names, including static imports and wildcard suffixes.
+**Languages**: every analyzer; selectors use language-appropriate names.
+
+| Language | Selector rules |
+| --- | --- |
+| Python and Go | Python and Go boundaries use module-name patterns, and Python relative imports are normalized using their source directory. |
+| JavaScript and TypeScript | JavaScript and TypeScript boundaries use module specifiers or normalized relative path patterns, with and without source extensions, and relative imports also match root-relative paths. |
+| Java | Java imports use qualified type and member names, including static imports and wildcard suffixes. |
+
 Type-only imports, re-exports, literal `require()` and literal `import()` are
 checked. Include both a package itself and its descendants where needed. All
 matching boundaries apply. Dynamic imports, escaped module strings and build

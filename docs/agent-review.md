@@ -129,38 +129,3 @@ the review. It covers small receipts, retry deduplication, 100 incremental
 findings with a short acknowledgement, empty final chat, clean completion,
 transport failures, timeout cleanup, and the production CLI. It does not call a
 live model or certify compatibility with any particular third-party agent.
-
-
-Validation on 2026-09-28:
-
-| Command | Result |
-| --- | --- |
-| `uv run --no-sync code-harness --all` | 59 files, zero findings |
-| `uv run --no-sync mypy src tests` | Passed, 58 source files |
-| `uv run --no-sync ruff check src tests` | Passed |
-| `uv run --no-sync ruff format --check src tests` | Passed, 59 files |
-| `uv run --no-sync pytest -q -W error` | 204 passed |
-| `git diff --check` | Passed |
-
-The 59 targeted review tests were also run with `coverage==7.13.4`, using
-`coverage run --branch --source=code_harness.review`. The new review package has
-383/397 covered statements and 82/94 covered branches. Review contracts,
-prompt rendering, rule evidence validation, submission models, and typed wire
-models have complete executable-line coverage. Coverage artifacts are
-`/tmp/code-harness-acp-review-final.coverage` and
-`/tmp/code-harness-acp-review-final.xml`.
-
-Inspected remaining gaps are impossible absent-pipe guards, cumulative output
-limits distinct from the tested oversized-frame limit, unsupported client request
-and non-text response variants, ignored extension notifications, and corrupted
-journal replay branches. MCP server startup and locking execute in real child
-processes during integration tests and are not counted by the parent-process
-coverage run. Successful cancellation and timeout escalation to SIGKILL are
-covered, and the full suite treats subprocess-resource warnings as errors.
-
-Architecture review confirmed that rules and submission state do not import ACP
-or MCP implementations, canonical findings remain concrete through validation,
-serialization occurs only at transport and persistence boundaries, and one
-server owns journal writes. The repository policy includes all new runtime and
-fixture files with unchanged scope and metric limits. No live-provider review
-or third-party-agent certification is claimed.
