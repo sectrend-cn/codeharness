@@ -26,11 +26,12 @@ five `size.*` IDs. Fully disabled bundles skip parsing, and a disabled checker
 never permits broken plugin registration. Changing an enable flag is a policy
 change subject to the same full audit and review as changing a threshold.
 
-The equivalent facts appear in `docs/checker-configuration.md` in your
-code-harness source checkout, with `docs/guarded-projection.md` and
-`docs/comment-suppressions.md` covering those two checkers in depth. Keep this
-index, the checker pages and the source-checkout documents in the same batch when
-either side changes, and treat the implementation as the final authority.
+The equivalent facts appear in `docs/checker-configuration.md`, the maintenance
+note kept with this repository for its own development, while
+[comment suppressions](comment-suppressions.md) covers suppression directives in
+depth. Keep this index, the checker pages and `docs/checker-configuration.md` in
+the same batch when either side changes, and treat the implementation as the
+final authority.
 
 ## Coverage
 
@@ -90,3 +91,7 @@ module-level functions; its page records the per-language candidate rules.
 | [`architecture.import`](checkers/architecture.import.md) | Dependencies forbidden by configured boundaries | All |
 | [`architecture.dispatch`](checkers/architecture.dispatch.md) | Language and rule identity comparison or match/switch dispatch | All |
 | [`architecture.object_model`](checkers/architecture.object_model.md) | Non-underscore module-level functions in configured extension paths | Python, Go, JavaScript, TypeScript, TSX; not Java |
+
+New checker pages start from [the checker page template](checkers/TEMPLATE.md),
+which encodes the unified language format and the checklist for adding a checker.
+`TEMPLATE.md` is the only non-checker file in that directory.

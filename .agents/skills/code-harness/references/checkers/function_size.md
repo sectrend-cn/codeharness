@@ -8,17 +8,32 @@ and `size.parameters`, and its single `enabled` switch controls all of them.
 
 **Severity**: error for every one of the five diagnostics.
 
-**Languages**: every analyzer. Metrics are syntax metrics, not compiler control
-flow graphs, so case and exception semantics differ between languages. Complexity
-starts at one and increments for recognized branches, loops, catches,
-non-default cases, conditional expressions, comprehension decisions and short
-circuit operators. Nesting counts nested recognized control constructs; Python
-`elif` alternatives share their parent's depth. Blank lines, comments and Python
-docstrings are excluded from the line span, while signatures and nested bodies
-are counted. Nested functions receive independent control-flow checks and do not
-inflate the enclosing function's complexity. Go grouped parameter names count
-separately, and Go receivers plus Python `self`/`cls` do not consume the argument
-budget. Formatting and line length stay language-tool checks.
+**Languages**: every analyzer.
+
+Metrics are syntax metrics, not compiler control flow graphs, so case and
+exception semantics differ between languages. Complexity starts at one and
+increments for recognized branches, loops, catches, non-default cases,
+conditional expressions, comprehension decisions and short circuit operators.
+Nesting counts nested recognized control constructs; Python `elif` alternatives
+share their parent's depth. Blank lines, comments and Python docstrings are
+excluded from the line span, while signatures and nested bodies are counted.
+Nested functions receive independent control-flow checks and do not inflate the
+enclosing function's complexity. Formatting and line length stay language-tool
+checks.
+
+| Language | Language-specific metric rules |
+| --- | --- |
+| Go and Python | Go grouped parameter names count separately, and Go receivers plus Python `self`/`cls` do not consume the argument budget. |
+
+#### Java
+
+Java measures methods, constructors, compact record constructors and lambdas; its
+receivers do not consume the argument budget and varargs count once. Its control
+metrics count branches, loops including enhanced `for`, catches, non-default
+switch labels, ternaries and short-circuit operators, with nested lambdas
+measured independently.
+
+## Configuration
 
 **Options**: `enabled` (boolean, default `true`); `lines` (integer, at least 1,
 default 50); `statements` (integer, at least 1, default 50); `complexity`

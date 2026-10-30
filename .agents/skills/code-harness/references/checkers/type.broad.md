@@ -24,6 +24,20 @@ outputs. A local binding is permitted only when it has one assignment and every
 resolved read reaches permitted output; internal consumers, reassigned carriers
 and `json.loads(json.dumps(payload))` round trips remain findings. Merely listing
 the encoder's module in `third_party_modules` does not exempt its output.
+Computed members, destructured aliases, runtime monkey-patching,
+control-flow-sensitive reassignment and cross-function value flow are not proved.
+
+#### Java
+
+Java markers separate standard-library erasure from project names: recognized raw
+standard collections need explicit import or qualified-name evidence, and locally
+declared or explicitly imported custom `Object` and collection names are not
+mistaken for standard-library erasure. Bounded wildcards retain their bound, and
+parameterized containers are still checked for nested broad types. Raw collection
+recognition is deliberately finite and does not infer arbitrary user-defined
+generic declarations.
+
+## Configuration
 
 **Options**: `enabled` (boolean, default `true`); `encoding` (object, default all
 four lists empty):

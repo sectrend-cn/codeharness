@@ -82,7 +82,7 @@ not installed, state that explicitly — never report the task as gated or passe
    in Python, `//` in Go, Java and the JavaScript family. Block-comment forms,
    wildcards, lists, `type.suppression` itself and a missing reason are invalid
    and report `type.suppression`. Syntax and validation rules:
-   `docs/comment-suppressions.md` in your code-harness source checkout.
+   [approved next-line diagnostic exceptions](references/comment-suppressions.md).
 3. Policy changes (thresholds, excludes, owners, boundaries) are architecture
    decisions: they require a separate `--all` full audit and review. Never
    weaken the policy to force a green report (policy item 3).
@@ -201,8 +201,8 @@ Key differences:
   `type.annotation` and `type.broad`.
 
 Coverage does not promise complete evidence for every construct. The resolution
-limits for boundaries, usage, encodings and guarded projections are documented
-in your code-harness source checkout and remain review obligations.
+limits for boundaries, usage, encodings and guarded projections are recorded on
+the corresponding checker pages and remain review obligations.
 
 Full detail for every checker — role, language differences, options, defaults,
 types and correct/incorrect configuration — is on its own page linked from the
@@ -211,7 +211,7 @@ types and correct/incorrect configuration — is on its own page linked from the
 ## Checker configuration
 
 Each repository commits its policy at `.codeharness/code-harness.json`; the gate
-never changes it. Version 2 separates global file selection from checker
+never changes it. The policy separates global file selection from checker
 options:
 
 ```json
@@ -269,7 +269,7 @@ Rules that apply to every checker:
 }
 ```
 
-An invalid version-2 policy, rejected before any file is checked:
+An invalid policy, rejected before any file is checked:
 
 ```json
 {
@@ -312,8 +312,7 @@ first read `.agents/skills/code-harness/SKILL.md` and follow it.
 - [Checker index](references/checkers.md) — the 18 checkers and the 22
   diagnostic IDs, with coverage tables and one page per checker for its role,
   language differences, options, defaults, types and configuration examples.
-- In your code-harness source checkout: `docs/checker-configuration.md` (all
-  checker options, language coverage and migration), `docs/getting-started.md`
-  (install → configure → run → triage → per-task gating), `README.md` (full CLI
-  and policy reference), and `examples/.codeharness/code-harness.json` (policy
-  sample to bootstrap from).
+- [Approved next-line diagnostic exceptions](references/comment-suppressions.md)
+  — the suppression directive syntax, validation rules and their snapshot scope.
+- [Policy sample](references/policy-sample.md) — a compact policy covering file
+  selection, owners, import boundaries and function-size thresholds.

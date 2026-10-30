@@ -1,9 +1,9 @@
 # Agent integration notes — code-harness skill
 
 How a consuming repository connects an agent to this skill, and the limits
-that apply. File anchors in these notes refer to your code-harness source
-checkout (the same checkout the skill directory was copied from); no network
-location is assumed.
+that apply. Anchors in these notes point inside the skill directory; bare file
+names such as `README.md` name files of the code-harness source repository for
+reference only, not resolvable anchors; no network location is assumed.
 
 ## Generic statement (any agent)
 
@@ -44,6 +44,10 @@ ln -s /absolute/path/to/repo/.agents/skills/code-harness <agent-skills-dir>/code
 
 ## Team / CI usage
 
-Out of scope for this skill; see the
-[Integration section](../../../../README.md#integration) of the README in your
-code-harness source checkout.
+Any CI system that can run the gate container image integrates with the same
+commands used locally. The code-harness repository itself runs the same
+engineering checks in GitHub Actions (`.github/workflows/engineering.yml`).
+A pre-commit hook can run `uv run --no-sync code-harness --staged` once the
+policy file is committed; the hook must be installed explicitly, because the
+tool never changes Git configuration. The `README.md` integration section
+carries the background.

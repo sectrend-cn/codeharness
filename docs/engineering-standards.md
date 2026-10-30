@@ -31,9 +31,8 @@ supported options are recorded in [Checker configuration](checker-configuration.
    bags. Rule objects own their behavior; forwarding wrappers around procedural
    dispatch do not establish ownership. Configure
    `checkers["architecture.object_model"].paths` for extension implementation paths.
-   The [decoupling design](language-rule-decoupling.md) defines the target and
-   migration obligations; [Plugin architecture](plugin-architecture.md) records
-   the current API 2 runtime and its compatibility changes.
+   [Plugin architecture](plugin-architecture.md) records the decoupled language/rule
+   design, the current runtime and its compatibility behavior.
 6. Export only consumed supported APIs. Test public behavior through concrete
    seams. Do not expose internals or clone domain models merely to simplify tests.
 7. Search existing types before introducing a DTO, payload or fixture wrapper.
@@ -62,9 +61,12 @@ capabilities fail registration; optional unavailable analysis is explicitly
 reported. Rule identity ownership is unique within each composed execution.
 
 The repository import policy prohibits runtime Python AST dependencies and
-language-owned analyzer composition. The implementation follows the approved
-decoupling design; its dated validation evidence records the checked scope and
-remaining inference limits. Policy enforcement does not authorize suppressions.
+language-owned analyzer composition. It also keeps concrete grammar dependencies
+(`tree_sitter_python`, `tree_sitter_go`, `tree_sitter_java`, `tree_sitter_javascript`
+and `tree_sitter_typescript`) out of shared analysis, parsing and rule modules;
+language plugins own their grammars. The implementation follows the approved
+decoupled language/rule design, and its inference limits remain review
+obligations. Policy enforcement does not authorize suppressions.
 
 ## Types and boundaries
 
@@ -148,11 +150,17 @@ functions or control-flow regions. Dynamic keys, transforms, business operations
 validation and unproved predicates do not establish this pattern. Findings retain
 locations and predicate distinctions; no autofix is safe by default.
 
-Remediation must preserve concrete field associations and omission semantics.
+Remediation must preserve concrete field associations, field types, omission
+semantics, evaluation order and exceptions.
+Where required nullable fields are the actual domain contract, a concrete object
+can express the mapping. Where omission is required, retain it through reviewed
+typed construction, or change the owning contract together with its consumers.
 Do not replace guards mechanically with spreads, casts, erased dictionaries,
 serialization filtering or forwarding helpers, and do not weaken optional-field
-types just to pass the gate. See [Guarded field projections](guarded-projection.md)
-for exact adapter coverage, conservative inference limits and validation evidence.
+types just to pass the gate. Turning assignments into conditional spreads does
+not remove the pattern, and repeated validation of already typed internal fields
+is not remediation. Exact adapter coverage and conservative inference limits are
+documented in `.agents/skills/code-harness/references/checkers/structure.guarded_projection.md`.
 
 ## Unused declarations and results
 

@@ -7,6 +7,7 @@ Reports files whose responsibility ownership is missing or overlapping.
 **Severity**: error.
 
 **Languages**: every analyzer; the check is structural and language-independent.
+
 When owners are configured and the checker is enabled, every selected file must
 match exactly one owner. Ownership does not infer dependency permissions, and an
 empty owner list provides no project-specific facts for the check to enforce.
